@@ -1,0 +1,30 @@
+version: "3.3"
+
+services:
+  vault:
+    image: vault:1.11.3
+    container_name: vault
+    # restart: on-failure:10
+    command: vault server -config=/vault/config/config.hcl
+    # restart: unless-stopped
+    volumes:
+      - /opt/vault/config:/vault/config:ro
+      - /opt/vault/file:/vault/file
+      - /opt/vault/logs:/vault/logs
+      - /home/vc/certbot/conf/live/krsh.life:/run/secrets:ro
+      # .nginx/SSL:/run/secrets:ro
+      #- /home/vc/nginx/SSL:/run/secrets:ro
+    environment:
+      # - VAULT_ADDR="https://0.0.0.0:8201"
+      - VAULT_ADDR=http://127.0.0.1:8200
+    cap_add:
+      - IPC_LOCK
+    expose:
+      - 8200
+    #ports:
+     # - 8201:8201
+     # - 8200:8200
+    healthcheck:
+      retries: 5
+    networks:
+      - minio_net

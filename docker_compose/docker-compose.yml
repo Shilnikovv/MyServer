@@ -1,0 +1,110 @@
+version: "3.3"
+
+include:
+   - path: ../docker_compose/vault.yaml
+     project_directory: ..
+     
+services:
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+# Certbot создает сертификаты в папке /etc/letsencrypt/
+      - ./certbot/conf:/etc/letsencrypt:rw
+# Certbot будет записывать свои файлы в ./certbot/www/, а nginx будет обслуживать их через порт 80 каждому пользователю, запр>
+# Так Certbot может аутентифицировать наш сервер.
+      - ./certbot/www:/var/www/certbot:rw
+# директива command: нужна если запрос сертификата делать при запуске контейнера 
+# command: certonly --webroot -w /var/www/certbot --email s38.alarm@gmail.com -d minio.krsh.life -d krsh.life -d www.krsh.life --agree-tos
+# Шаблон: certonly --webroot -w /var/www/certbot --force-renewal --email {email} -d {domain} --agree-tos
+
+  nginx:
+    image: nginxproxy/nginx-proxy:alpine
+    container_name: nginxproxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/log:/var/log/nginx/:rw
+      - ./certbot/conf:/etc/letsencrypt:ro
+# Certbot будет записывать свои файлы в ./certbot/www/, 
+# а nginx будет обслуживать их через порт 80 каждому пользователю, запрашивающему /.wellknow/acme-challenge/.
+      - ./certbot/www:/var/www/certbot:rw
+    ports:
+      - 80:80
+      - 443:443
+      # for vault
+      # - 8201:443
+      # for keycloak
+      # - 8443:443
+    networks:
+      - minio_net
+
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9090"
+    restart: unless-stopped
+    volumes:
+      - /mnt/nas:/data
+    env_file:
+      - ~/minio/.env
+    ports:
+      # - 9090:9090
+      - 9000:9000
+    expose:
+      - "9090"
+    #environment:
+      #- VIRTUAL_HOST=192.168.106.31
+      #- VIRTUAL_PORT=9090
+    networks:
+      - minio_net
+    depends_on:
+      - nginx
+
+  keycloak:
+    image: quay.io/keycloak/keycloak
+    command: start-dev
+    container_name: keycloak
+    environment:
+      - KC_DB=postgres
+      - KC_DB_URL_HOST=postgres_keycloak
+      - KC_DB_URL_DATABASE=keycloak
+      - KC_DB_PASSWORD=1223
+      - KC_DB_USERNAME=keycloak
+      - KC_DB_SCHEMA=public
+      - KEYCLOAK_ADMIN=admin
+      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KC_PROXY=edge
+      - KC_HOSTNAME_ADMIN_URL=https://localhost:8443
+      - KC_HOSTNAME_URL=https://localhost:8443
+    depends_on:
+      postgres_keycloak:
+        condition: service_healthy
+    networks:
+      - minio_net
+
+  postgres_keycloak:
+    image: postgres:15.2
+    command: postgres -c 'max_connections=200'
+    volumes:
+      - pgdata_keycloak:/var/lib/postgresql/data
+    environment: 
+      - POSTGRES_DB=keycloak
+      - POSTGRES_USER=keycloak
+      - POSTGRES_PASSWORD=1223 
+    healthcheck:
+      test: "exit 0"
+    ports:
+      - 5436:5439
+    networks:
+      - minio_net
+
+
+volumes:
+  pgdata_keycloak:
+
+networks:
+  minio_net:
+
