@@ -6,3 +6,4 @@
 nginx/log/**
 !.ssh/
 !.gitignore
+!cerbot
