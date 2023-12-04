@@ -1,0 +1,8 @@
+/*
+!docker_compose/
+!docker-compose.yml
+!minio/
+!nginx/
+nginx/log/**
+!.ssh/
+!.gitignore
